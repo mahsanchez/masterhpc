@@ -93,23 +93,17 @@ int main(int argc, char **argv)
   dim3 dimBlock(blockSize, blockSize, 1);
   dim3 dimGrid(numBlocks, numBlocks, 1);
 
-  float *A_h = (float*)malloc(mem_size);
-  float *B_h = (float*)malloc(mem_size);
-  float *C_h = (float*)malloc(mem_size);
-  float *S_h = (float*)malloc(mem_size);
-  float *O_h = (float*)malloc(mem_size);
+  float *A_h;
+  float *B_h;
+  float *C_h;
+  float *S_h;
+  float *O_h;
   
-  float *A_d;
-  float *B_d;
-  float *C_d;
-  float *O_d;
-  float *S_d;
-  
-  checkCuda( cudaMalloc(&A_d, mem_size) );
-  checkCuda( cudaMalloc(&B_d, mem_size) );
-  checkCuda( cudaMalloc(&C_d, mem_size) );
-  checkCuda( cudaMalloc(&S_d, mem_size) );
-  checkCuda( cudaMalloc(&O_d, mem_size) );
+  cudaMallocHost(&A_h, mem_size);
+  cudaMallocHost(&B_h, mem_size);
+  cudaMallocHost(&C_h, mem_size);
+  cudaMallocHost(&S_h, mem_size);
+  cudaMallocHost(&O_h, mem_size);
     
   for (int j = 0; j < width; j++) {
     for (int i = 0; i < width; i++) {
@@ -125,16 +119,33 @@ int main(int argc, char **argv)
   dgemm_cpu(S_h, C_h, O_h, width);
   printf("Time taken by Host: %.6fs\n", (double)(clock() - tStart) / CLOCKS_PER_SEC);
   
-  checkCuda( cudaMemcpy(A_d, A_h, mem_size, cudaMemcpyHostToDevice) );
-  checkCuda( cudaMemcpy(B_d, B_h, mem_size, cudaMemcpyHostToDevice) );
+  float *A_d;
+  float *B_d;
+  float *C_d;
+  float *O_d;
+  float *S_d;
+  
+  checkCuda( cudaMalloc(&A_d, mem_size) );
+  checkCuda( cudaMalloc(&B_d, mem_size) );
+  checkCuda( cudaMalloc(&C_d, mem_size) );
+  checkCuda( cudaMalloc(&S_d, mem_size) );
+  checkCuda( cudaMalloc(&O_d, mem_size) );
+  
+  cudaStream_t stream1, stream2;
+  cudaStreamCreate(&stream1); 
+  cudaStreamCreate(&stream2);
+  
+  checkCuda( cudaMemcpyAsync(A_d, A_h, mem_size, cudaMemcpyHostToDevice, stream1) );
+  checkCuda( cudaMemcpyAsync(B_d, B_h, mem_size, cudaMemcpyHostToDevice, stream1) );
   
   tStart = clock();
   float ms = 0;
   
-  dgemm<<<dimGrid, dimBlock>>>(A_d, B_d, S_d, width);
-  cudaDeviceSynchronize(); 	
-  checkCuda( cudaMemcpy(C_d, C_h, mem_size, cudaMemcpyHostToDevice) );
-  dgemm<<<dimGrid, dimBlock>>>(S_d, C_d, O_d, width);
+  dgemm<<<dimGrid, dimBlock, 0, stream1>>>(A_d, B_d, S_d, width);
+  checkCuda( cudaMemcpyAsync(C_d, C_h, mem_size, cudaMemcpyHostToDevice, stream2) );
+  cudaStreamSynchronize(stream1); 	
+  
+  dgemm<<<dimGrid, dimBlock, 0, stream2>>>(S_d, C_d, O_d, width);
   cudaDeviceSynchronize(); 	
   checkCuda( cudaMemcpy(O_h, O_d, mem_size, cudaMemcpyDeviceToHost) );
   
@@ -143,13 +154,15 @@ int main(int argc, char **argv)
   checkResults(O_h, O_h, width);
 
 error_exit:
+  cudaStreamDestroy(stream1); 
+  cudaStreamDestroy(stream2);
   checkCuda( cudaFree(A_d) );
   checkCuda( cudaFree(B_d) );
   checkCuda( cudaFree(C_d) );
   checkCuda( cudaFree(O_d) );
-  free(C_h);
-  free(A_h);
-  free(B_h);
-  free(S_h);
-  free(O_h);
+  checkCuda( cudaFreeHost(C_h) );
+  checkCuda( cudaFreeHost(A_h) );
+  checkCuda( cudaFreeHost(B_h) );
+  checkCuda( cudaFreeHost(S_h) );
+  checkCuda( cudaFreeHost(O_h) );
 }
