@@ -2,6 +2,12 @@
 #include <math.h>
 #include "mpi.h"
 
+/*
+mpiexec -n 4 canon-mpi 16
+mpiexec -n 16 canon-mpi 256
+mpiexec -n 16 canon-mpi 512
+*/
+
 void print_matrix(const char* desc, int m, int n, float* a, int lda) {
 	int i, j;
 	printf("\n %s\n", desc);

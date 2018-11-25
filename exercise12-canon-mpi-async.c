@@ -2,6 +2,12 @@
 #include <math.h>
 #include "mpi.h"
 
+/*
+mpiexec -n 4 canon-mpi 16
+mpiexec -n 16 canon-mpi 256
+mpiexec -n 16 canon-mpi 512
+*/
+
 void print_matrix(const char* desc, int m, int n, float* a, int lda) {
 	int i, j;
 	printf("\n %s\n", desc);
@@ -40,10 +46,12 @@ int main ( int argc , char **argv )
 	 int value, nproc , false=0;
      MPI_Status status, status2;
 	 float *A, *B, *C;
-	 int N = 16;
-	 int rows = 4;
+	 
+	int N = argc > 0 ? atoi(argv[1]) : 16;
+	int rows = sqrt(N);
+	
 	 MPI_Request request;
-	 MPI_Request request2;
+	 MPI_Request request2, request3, request4;
 	 
 	int dims[2], periods[2], coords[2];
 	int ndims = 2;
@@ -85,7 +93,7 @@ int main ( int argc , char **argv )
 	 
 	 // generate submatrix for each process and scatter it among them
 	 int TILE_SIZE = (rows * rows)/ nproc; 
-	 int TILE_WIDTH = (int) sqrt(rows);
+	 int TILE_WIDTH = (int) sqrt(TILE_SIZE);
 	 float *tileA = (float *) malloc(TILE_SIZE * sizeof(float)); 
 	 float *tileB = (float *) malloc(TILE_SIZE * sizeof(float)); 
 	 
@@ -104,10 +112,10 @@ int main ( int argc , char **argv )
 		mmult(tileA, tileB, tileC, TILE_WIDTH);	
 		MPI_Isend(tileA, TILE_WIDTH, MPI_FLOAT, left, 0, comm_cart, &request);
 		MPI_Isend(tileB, TILE_WIDTH, MPI_FLOAT, up, 0, comm_cart, &request2);
+		MPI_Recv(tileA, TILE_WIDTH, MPI_FLOAT, right, 0, comm_cart,  &request3);
+		MPI_Recv(tileB, TILE_WIDTH, MPI_FLOAT, down, 0, comm_cart,  &request4);
 		MPI_Wait(&request, &status);
 		MPI_Wait(&request2, &status2);
-		MPI_Recv(tileA, TILE_WIDTH, MPI_FLOAT, right, 0, comm_cart,  &request);
-		MPI_Recv(tileB, TILE_WIDTH, MPI_FLOAT, down, 0, comm_cart,  &request2);
 	}
 	
 	time_end = MPI_Wtime();
