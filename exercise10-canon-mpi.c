@@ -40,9 +40,11 @@ int main ( int argc , char **argv )
 	 int value, nproc , false=0;
      MPI_Status status;
 	 float *A, *B, *C;
-	 int N = 16;
-	 int rows = 4;
-	 
+	
+	int N = argc > 0 ? atoi(argv[1]) : 16;
+	int rows = sqrt(N);
+	printf("Rows: %d  %d \n", N, rows);
+	
 	int dims[2], periods[2], coords[2];
 	int ndims = 2;
     int right, left, up, down;
@@ -83,7 +85,7 @@ int main ( int argc , char **argv )
 	 
 	 // generate submatrix for each process and scatter it among them
 	 int TILE_SIZE = (rows * rows)/ nproc; 
-	 int TILE_WIDTH = (int) sqrt(rows);
+	 int TILE_WIDTH = (int) sqrt(TILE_SIZE);
 	 float *tileA = (float *) malloc(TILE_SIZE * sizeof(float)); 
 	 float *tileB = (float *) malloc(TILE_SIZE * sizeof(float)); 
 	 
