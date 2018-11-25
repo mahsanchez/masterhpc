@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 	
 	for (int i = 0; i < recvcount; i++) {
 		if (recvbuf[i] == 0) {
-		    numeven++
+		    numevens++;
 		}
 		else {
 			numodds++;
@@ -63,13 +63,13 @@ int main(int argc, char *argv[])
 		odd_ranks[i] = i*2 + 1;
 	}
 	
-	int* even_ranks = (int *) malloc( numeven * sizeof(int) );
-	for (int i = 0; i < numeven; i++) {
+	int* even_ranks = (int *) malloc( numevens * sizeof(int) );
+	for (int i = 0; i < numevens; i++) {
 		even_ranks[i] = i*2;
 	}
 	
 	MPI_Group_incl(worker_group, numodds, odd_ranks, &worker_group1);
-	MPI_Group_incl(worker_group, numeven, even_ranks, &worker_group2);
+	MPI_Group_incl(worker_group, numevens, even_ranks, &worker_group2);
 	
     MPI_Comm_create(workers, worker_group1, &workers1);
 	MPI_Comm_create(workers, worker_group2, &workers2);
