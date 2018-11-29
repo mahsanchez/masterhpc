@@ -30,8 +30,8 @@ __global__ void transposeMatrix(float *B, float *A, int width)
 int main(int argc, char **argv)
 {
   // Number of rows and columns must be a multiple of 32
-  const int rows = 2048;
-  const int columns = 2048;
+  const int rows = 8192;
+  const int columns = 8192;
   const int width = rows;
   const int size = rows*columns*sizeof(float);
 
