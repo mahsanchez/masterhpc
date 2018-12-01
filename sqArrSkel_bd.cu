@@ -3,11 +3,6 @@
 #include <string.h>
 #include <time.h>
 
-/*
-https://devblogs.nvidia.com/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-https://stackoverflow.com/questions/10460742/how-do-cuda-blocks-warps-threads-map-onto-cuda-cores
-https://stackoverflow.com/questions/31076953/understanding-block-and-block-cyclic-matrix-distributions
-*/
 
 inline cudaError_t checkCuda(cudaError_t result)
 {
@@ -19,9 +14,9 @@ inline cudaError_t checkCuda(cudaError_t result)
 
 __global__ void square_block(float *array, int k, int n) {
   int index = blockIdx.x * blockDim.x + threadIdx.x*k;
-  int end = blockIdx.x * blockDim.x + (threadIdx.x + 1)*k;
+  int endIndex = blockIdx.x * blockDim.x + (threadIdx.x + 1)*k;
   
-  for (int i = index; i < end; i++) {
+  for (int i = index; i < endIndex; i++) {
      if (i < n) {
 	    array[i] = sqrt(array[i]);
 		//printf("blockIdx.x=%d , blockDim.x=%d , ti=%d, index=%d, i=%d\n", blockIdx.x, blockDim.x, threadIdx.x, index, i);
