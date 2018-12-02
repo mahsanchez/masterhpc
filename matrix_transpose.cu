@@ -1,4 +1,10 @@
 #include <stdio.h>
+#include <time.h>
+
+/*
+Measure Time
+Maximum Matrix Size 
+*/
 
 const int TILE_DIM = 32;
 
@@ -9,6 +15,7 @@ inline cudaError_t checkCuda(cudaError_t result) {
   }	
   return result;
 }
+ 
 
 
 __global__ void transposeMatrix(float *B, float *A, int width)
@@ -29,18 +36,30 @@ __global__ void transposeMatrix(float *B, float *A, int width)
 
 int main(int argc, char **argv)
 {
+  if (argc < 1) {
+     printf("matrix size is a mandatory parameter");
+	 exit(1);
+  }
+  
   // Number of rows and columns must be a multiple of 32
-  const int rows = 8192;
-  const int columns = 8192;
+  int rows = atoi(argv[1]);
+  
+  if (rows % TILE_DIM ) {
+    printf("number of rows must be multiple of 32\n");
+    exit(1);
+  }
+  
+  const int columns = rows;
   const int width = rows;
   const int size = rows*columns*sizeof(float);
 
   dim3 dimGrid(width/TILE_DIM, width/TILE_DIM);
   dim3 dimBlock(TILE_DIM, TILE_DIM);
 
-  float *A = (float*)malloc(size);
-  float *B = (float*)malloc(size);
-  float *C = (float*)malloc(size);
+  float *A, *B, *C;
+  A = (float*)malloc(size);
+  B = (float*)malloc(size);
+  C = (float*)malloc(size);
   
   float *dA, *dB;
   checkCuda( cudaMalloc(&dA, size) );
@@ -50,15 +69,18 @@ int main(int argc, char **argv)
     for (int i = 0; i < columns; i++)
       A[j*width + i] = 0.15*i + 0.1*j;
   
+  clock_t tStart = clock();
   for (int j = 0; j < rows; j++)
     for (int i = 0; i < columns; i++)
       C[j*width + i] = A[i*width + j];
+  printf("Time taken by Host: %.6fs\n", (double)(clock() - tStart) / CLOCKS_PER_SEC);
 
   checkCuda( cudaMemcpy(dA, A, size, cudaMemcpyHostToDevice) );
   
-  transposeMatrix<<<dimGrid, dimBlock>>>(dB, dA, width);
-  
+  tStart = clock();
+  transposeMatrix<<<dimGrid, dimBlock>>>(dB, dA, width); 
   checkCuda( cudaDeviceSynchronize() );
+  printf("Time taken by GPU: %.6fs\n", (double)(clock() - tStart) / CLOCKS_PER_SEC);
   
   checkCuda( cudaMemcpy(B, dB, size, cudaMemcpyDeviceToHost) );
   
@@ -66,9 +88,13 @@ int main(int argc, char **argv)
 	{
 		if (B[i] != C[i]) {
 		  printf("%d %f %f INVALID RESULTS \n", i, B[i], C[i]);
+		  goto finished;
 		}
 	}	
+	
+   printf("Matrix Transpose Successful");	
 
+finished:
   checkCuda( cudaFree(dA) );
   checkCuda( cudaFree(dB) );
   free(A);
