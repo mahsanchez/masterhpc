@@ -13,8 +13,8 @@ inline cudaError_t checkCuda(cudaError_t result)
 }
 
 __global__ void square_block(float *array, int k, int n) {
-  int index = blockIdx.x * blockDim.x + threadIdx.x*k;
-  int endIndex = blockIdx.x * blockDim.x + (threadIdx.x + 1)*k;
+  int index = k * blockIdx.x * blockDim.x + threadIdx.x*k;
+  int endIndex = k * blockIdx.x * blockDim.x + (threadIdx.x + 1)*k;
   
   for (int i = index; i < endIndex; i++) {
      if (i < n) {
