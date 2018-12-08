@@ -6,6 +6,7 @@
 /*
 https://devblogs.nvidia.com/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
 https://stackoverflow.com/questions/10460742/how-do-cuda-blocks-warps-threads-map-onto-cuda-cores
+https://stackoverflow.com/questions/31076953/understanding-block-and-block-cyclic-matrix-distributions
 */
 
 inline cudaError_t checkCuda(cudaError_t result)

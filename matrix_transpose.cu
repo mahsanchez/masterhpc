@@ -57,9 +57,14 @@ int main(int argc, char **argv)
   dim3 dimBlock(TILE_DIM, TILE_DIM);
 
   float *A, *B, *C;
+  checkCuda( cudaMallocHost(&A, size) );
+  checkCuda( cudaMallocHost(&B, size) );
+  checkCuda( cudaMallocHost(&C, size) );
+  /*
   A = (float*)malloc(size);
   B = (float*)malloc(size);
   C = (float*)malloc(size);
+  */
   
   float *dA, *dB;
   checkCuda( cudaMalloc(&dA, size) );
@@ -97,7 +102,7 @@ int main(int argc, char **argv)
 finished:
   checkCuda( cudaFree(dA) );
   checkCuda( cudaFree(dB) );
-  free(A);
-  free(B);
-  free(C);
+  checkCuda(cudaFreeHost(A));
+  checkCuda(cudaFreeHost(B));
+  checkCuda(cudaFreeHost(C));
 }

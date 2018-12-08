@@ -13,10 +13,10 @@ inline cudaError_t checkCuda(cudaError_t result)
   return result;
 }
 
-__global__ void square(float* __restrict__ x, const float* __restrict__ array, int n) {
+__global__ void square(float* x, float* array, int n) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < n) { 
-     x[index] = sqrt( array[index]);
+     x[index] = sqrt( __ldg(&array[index]) );
   }
 }
 
