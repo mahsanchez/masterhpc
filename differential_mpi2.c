@@ -5,8 +5,8 @@
 #define COLS  12
 #define ROWS  8
 
-# define NX 2400
-# define NY 2400
+# define NX 12
+# define NY 8
 
 MPI_Comm grid_comm;
 int converged;
@@ -14,7 +14,7 @@ double diff;
 double dx;
 double dy;
 double error;
-double f[NX][NY];
+double f[NX*NY];
 int i;
 int it;
 int it_max = 1500;
@@ -22,19 +22,26 @@ int j;
 int nx = NX;
 int ny = NY;
 double tolerance = 0.000001;
-double u[NX][NY];
+double u[NX*NY];
 double u_norm;
-double udiff[NX][NY];
-double uexact[NX][NY];
-double unew[NX][NY];
+double udiff[NX*NY];
+double uexact[NX*NY];
+double unew[NX*NY];
 double unew_norm;
 double x;
 double y;
+int p, rank;
+
+int main ( int argc, char *argv[] );
+double norm ( int nx, int ny, double *a );
+void initial ( int nx, int ny, double *f );
+void iteration ( int nx, int ny, double dx, double dy, double f[NX*NY], double u[NX*NY], double unew[NX*NY] );
+double evalexact ( double x, double y );
+double evaldxdyexact ( double x, double y );
 
 int main(int argc, char **argv) {
 
     MPI_Init(&argc, &argv);
-    int p, rank;
     MPI_Comm_size(MPI_COMM_WORLD, &p);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 		
@@ -44,33 +51,47 @@ int main(int argc, char **argv) {
 	int reorder = 0;
 	
 	MPI_Dims_create(p, ndims, dims);
-	printf("Dimensions X=%d Y=%d\n", dims[0], dims[1]);
+	if (rank == 0) printf("Dimensions X=%d Y=%d\n", dims[0], dims[1]);
 	
 	MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, reorder, &grid_comm);
 
-    double a[ROWS*COLS];
     const int NPROWS=dims[1];  /* number of rows in _decomposition_ 2 */
     const int NPCOLS=dims[0];  /* number of cols in _decomposition_ 3 */
-    const int BLOCKROWS = ROWS/NPROWS;  /* number of rows in _block_ NPROWS */
-    const int BLOCKCOLS = COLS/NPCOLS; /* number of cols in _block_  NPCOLS */
-
-	dx = 1.0 / ( double ) ( nx - 1 );
-    dy = 1.0 / ( double ) ( ny - 1 );
-	
-	/*
-    Initialize the data
-    */
-    initial ( nx, ny, f );
-	fnorm = norm ( nx, ny, f );
-    if (rank == 0) { 
-       printf ( "  Norm of F = %g\n", fnorm );
-	}
+    const int BLOCKROWS = NY/NPROWS;  /* number of rows in _block_ NPROWS */
+    const int BLOCKCOLS = NX/NPCOLS; /* number of cols in _block_  NPCOLS */
 	
     if (p != NPROWS*NPCOLS) {
         fprintf(stderr,"Error: number of PEs %d != %d x %d\n", p, NPROWS, NPCOLS);
         MPI_Finalize();
         exit(-1);
     }
+
+	dx = 1.0 / ( double ) ( nx - 1 );
+    dy = 1.0 / ( double ) ( ny - 1 );
+	
+	/*
+    Print a message.
+    */ 
+	if (rank == 0) {
+		printf ( "\n" );
+		printf ( "  Number of X grid points: %d\n", NX );
+		printf ( "  Number of Y grid points: %d\n", NY );
+		printf ( "  X grid spacing: %f\n", dx );
+		printf ( "  Y grid spacing: %f\n", dy );
+	}
+	
+	/*
+    Initialize the data
+    */
+	if (rank == 0) {
+       initial ( NX, NY, f );
+	}
+	
+	MPI_Barrier(grid_comm);
+	
+	/*
+	Distribute the matrix in blocks across all process
+	*/
     double b[BLOCKROWS*BLOCKCOLS];
     for (int ii=0; ii<BLOCKROWS*BLOCKCOLS; ii++) b[ii] = 0;
 
@@ -90,9 +111,148 @@ int main(int argc, char **argv) {
         }
     }
 
-    MPI_Scatterv(a, counts, disps, blocktype, b, BLOCKROWS*BLOCKCOLS, MPI_DOUBLE, 0, grid_comm);
+    MPI_Scatterv(f, counts, disps, blocktype, b, BLOCKROWS*BLOCKCOLS, MPI_DOUBLE, 0, grid_comm);
+	
+	// Update ny, nx to local sub matrix block size per process
+	ny = BLOCKROWS; 
+    nx = BLOCKCOLS;
+	//	
+	double fnorm = norm (nx, ny, b );
+    if (rank == 0) { 
+      printf ( "  Norm of F = %g\n", fnorm );
+	}
+		
+	/*
+      Set the initial solution
+   */
+   for ( i = 0; i < nx; i++ )
+   {
+	for ( j = 0; j < ny; j++ )
+	{
+	  if ( i == 0 || i == nx - 1 || j == 0 || j == ny - 1 )
+	  {
+		unew[i+j*nx] = f[i+j*nx];
+	  }
+	  else
+	  {
+		unew[i+j*nx] = 0.0;
+	  }
+	}
+   } 
+   unew_norm = norm ( nx, ny, unew );
+   if (rank == 0) { 
+	  printf ( "  Norm of unew_norm = %g\n", unew_norm );
+   }
+	
+  /*
+  Set the exact solution.
+   */
+  for ( i = 0; i < nx; i++ )
+  {
+    x = ( double ) ( i ) / ( double ) ( NX - 1 );
+    for ( j = 0; j < ny; j++ )
+    {
+      y = ( double ) ( j ) / ( double ) ( NY - 1 );
+      uexact[i+j*nx] = evalexact ( x, y );
+    }
+  }
+  u_norm = norm ( nx, ny, uexact );
+  if (rank == 0) {
+     printf ( "  Norm of exact solution = %g\n", u_norm );
+  }
+  
+  /*
+  Iteration
+  */
+  converged = 0;
+
+  if (rank == 0) {
+	  printf ( "\n" );
+	  printf ( "  Step    ||Unew||     ||Diff||     ||Error||\n" );
+	  printf ( "\n" );
+  }
+
+  for ( i = 0; i < nx; i++ )
+  {
+    for ( j = 0; j < ny; j++ )
+    {
+      udiff[i+j*nx] = unew[i+j*nx] - uexact[i+j*nx];
+    }
+  }
+  error = norm ( nx, ny, udiff );
+  if (rank == 0) {
+	printf ( "  %4d  %14g                  %14g\n", 0, unew_norm, error );
+  }
+
+  for ( it = 1; it <= it_max; it++ )
+  {
+    for ( i = 0; i < nx; i++ )
+    {
+      for ( j = 0; j < ny; j++ )
+      {
+        u[i+j*nx] = unew[i+j*nx];
+      }
+    }
+
+    iteration ( nx, ny, dx, dy, b, u, unew );
+
+/*
+  Check for convergence.
+*/
+    u_norm = unew_norm;
+    unew_norm = norm ( nx, ny, unew );
+
+    for ( i = 0; i < nx; i++ )
+    {
+      for ( j = 0; j < ny; j++ )
+      {
+        udiff[i+j*nx] = unew[i+j*nx] - u[i+j*nx];
+      }
+    }
+    diff = norm ( nx, ny, udiff );
+
+    for ( i = 0; i < nx; i++ )
+    {
+      for ( j = 0; j < ny; j++ )
+      {
+        udiff[i+j*nx] = unew[i+j*nx] - uexact[i+j*nx];
+      }
+    }
+    error = norm ( nx, ny, udiff );
+
+	if (rank == 0) {
+		printf ( "  %4d  %14g  %14g  %14g\n", it, unew_norm, diff, error );
+	}
+
+    if ( diff <= tolerance )
+    {
+      converged = 1;
+      break;
+    }
+
+  }
+
+  if (rank == 0) {
+	  if ( converged )
+	  {
+		printf ( "  Converged\n" );
+	  }
+	  else
+	  {
+		printf ( "  NOT converged.\n" );
+	  }	  
+	  printf ( "\n" );
+      printf ( "  Normal end of execution.\n" );
+      printf ( "\n" );
+  }
+
+/*
+  Terminate.
+*/
+	MPI_Barrier(grid_comm);
 	
     /* each proc prints it's "b" out, in order */
+	/*
     for (int proc=0; proc<p; proc++) {
         if (proc == rank) {
             printf("Rank = %d\n", rank);
@@ -100,7 +260,7 @@ int main(int argc, char **argv) {
                 printf("Global matrix: \n");
                 for (int ii=0; ii<ROWS; ii++) {
                     for (int jj=0; jj<COLS; jj++) {
-                        printf("%3lf ",(double)a[ii*COLS+jj]);
+                        printf("%3lf ",(double)f[ii*COLS+jj]);
                     }
                     printf("\n");
                 }
@@ -116,16 +276,15 @@ int main(int argc, char **argv) {
         }
         MPI_Barrier(grid_comm);
     }
-
+   */
 
     MPI_Finalize();
 
     return 0;
 }
 
-//MPI_PROC_NULL
 
-double norm ( int nx, int ny, double a[NX][NY] )
+double norm (int nx, int ny, double *a)
 {
   int i;
   int j;
@@ -137,20 +296,83 @@ double norm ( int nx, int ny, double a[NX][NY] )
   {
     for ( j = 0; j < ny; j++ )
     {
-      v = v + a[i][j] * a[i][j];
+      v = v + a[i+j*nx] * a[i+j*nx];
     }
   }
   
   /* Reduce all of the local sums into the global sum */
-  MPI_Allreduce(&v, &gv, 1, MPI_FLOAT, MPI_SUM, grid_comm);
+  MPI_Allreduce(&v, &gv, 1, MPI_DOUBLE, MPI_SUM, grid_comm);
   
-  gv = sqrt ( gv / ( double ) ( nx * ny )  ); 
+  gv = sqrt ( gv / ( double ) (NX * NY)  ); 
 
   return gv;
 }
 
+MPI_Status status;
 
-void initial ( int nx, int ny, double f[NX][NY] )
+void iteration ( int nx, int ny, double dx, double dy, double f[NX*NY], double u[NX*NY], double unew[NX*NY] )
+{
+  int i;
+  int j;
+  int rank_source, rank_dest;
+  int disp = 1;
+  int directionX = 0;
+  int directionY = 1;
+  int boundary = 0;
+  double *halo_buf = 0;
+  int tag = 0;
+  
+  // halo exchange 
+  MPI_Cart_shift(grid_comm, directionX, disp, &rank_source, &rank_dest);
+  //boundary = (rank_source == MPI_PROC_NULL) || (rank_dest == MPI_PROC_NULL);
+  
+  if (rank_dest != MPI_PROC_NULL) {
+	 //MPI_Send(halo_buf, nx, MPI_DOUBLE, rank_dest, tag, grid_comm);
+	 //MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm, &status);
+  }
+  
+  if (rank_dest == MPI_PROC_NULL) {
+	 //MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm, &status);
+  }
+  
+  if (rank_source != MPI_PROC_NULL) {
+	 //MPI_ISend(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm);
+	 //MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm, &status); 
+  }
+  
+  if (rank_source == MPI_PROC_NULL) {
+	 //MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm, &status); 
+  }
+   
+  MPI_Cart_shift(grid_comm, directionY, disp, &rank_source, &rank_dest);
+  //boundary = boundary || (rank_source == MPI_PROC_NULL) || (rank_dest == MPI_PROC_NULL);
+
+ //printf ( "neighbors %4d %4d %4d %4d\n", rank, rank_source, rank_dest, boundary  );
+ //copy the halo to the grid u[]
+ 
+ //MPI_Barrier(grid_comm);
+ 
+  for ( i = 0; i < nx; i++ )
+  {
+    for ( j = 0; j < nx; j++ )
+    {
+	  // i == 0 || j == 0 || i == nx - 1 || j == ny - 1 
+      if ( boundary )
+      {
+        unew[i+j*nx] = f[i+j*nx];
+      }
+      else
+      { 
+        unew[i + j*nx] = 0.25 * ( 
+          u[(i-1) + j*nx] + u[i +(j+1)*nx] + u[i + (j-1)*nx] + u[(i+1) + j*nx] + f[i + j*nx] * dx * dy );
+      }
+    }
+  }
+  return;
+}
+
+
+void initial ( int nx, int ny, double f[NX*NY]  )
 {
   double fnorm;
   int i;
@@ -158,27 +380,25 @@ void initial ( int nx, int ny, double f[NX][NY] )
   double x;
   double y;
 
-    
   for ( i = 0; i < nx; i++ )
   {
     x = ( double ) ( i ) / ( double ) ( nx - 1 );
     for ( j = 0; j < ny; j++ )
     {
       y = ( double ) ( j ) / ( double ) ( ny - 1 );
-      if ( i == 0 || i == nx - 1 || j == 0 || j == ny - 1 )
+      if ( i == 0 || i == nx - 1 || j == 0 || j*nx == ny*nx - 1 )
       {
-        f[i][j] = evalexact ( x, y );
+        f[i+j*nx] = evalexact ( x, y );
       }
       else
       {
-        f[i][j] = - evaldxdyexact ( x, y );
+        f[i+j*nx] = - evaldxdyexact ( x, y );
       }
     }
   }
 
-  fnorm = norm ( nx, ny, f );
-
-  printf ( "  Norm of F = %g\n", fnorm );
+  //fnorm = norm ( nx, ny, f );
+  //printf ( "  Norm of F = %g\n", fnorm );
 
   return;
 }
