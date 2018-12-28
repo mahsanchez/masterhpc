@@ -357,6 +357,40 @@ void iteration ( int nx, int ny, double dx, double dy, double *f, double *u, dou
   
   //TODO - halo exchange direction 1
   
+  /*
+  direction = 0;
+  MPI_Cart_shift(grid_comm, direction, disp, &rank_source, &rank_dest);
+  if (rank_source != MPI_PROC_NULL) {
+	 //  copy from u to halo_buf
+	 for (int j = 0; j < ny; j++) 
+	 {
+		 halo_buf[i] = u[j*nx];
+	 }
+	 MPI_Send(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm);
+	 MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_source, tag, grid_comm, &status);
+	 // copy halo_buf to u_halo
+	 for (int j = 0; j < ny; i++) 
+	 {
+		 u_halo[0][j+1] = halo_buf[j];
+	 }
+  }
+
+  if (rank_dest != MPI_PROC_NULL) {
+	  //  copy from u to halo_buf
+	 for (int j = 0; j < ny; j++) 
+	 {
+		 halo_buf[j] = u[nx + j*nx];
+	 }
+	 MPI_Send(halo_buf, nx, MPI_DOUBLE, rank_dest, tag, grid_comm);
+	 MPI_Recv(halo_buf, nx, MPI_DOUBLE, rank_dest, tag, grid_comm, &status);
+	  // copy halo_buf to u_halo
+	 for (int j = 0; j < ny; i++) 
+	 {
+		 u_halo[ny][j+1] = halo_buf[j];
+	 }
+  }
+  */
+  
   printf ( "neighbors %4d %4d %4d %4d\n", rank, rank_source, rank_dest, direction );
  
   MPI_Barrier(grid_comm);
@@ -369,6 +403,8 @@ void iteration ( int nx, int ny, double dx, double dy, double *f, double *u, dou
 		u_halo[i+1][j+1] = u[i+j*nx];
 	}	
   }
+  
+  // Apply Stencil
  
   for ( i = 0; i < nx; i++ )
   {
