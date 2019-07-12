@@ -14,6 +14,8 @@ char *argv[];
     double PI25DT = 3.141592653589793238462643;
     double pi, local_pi, h, sum, x;
 	int rank, psize;
+	MPI_Request request;
+	MPI_Status status;
 	
 	MPI_Init(&argc,&argv);
     MPI_Comm_size(MPI_COMM_WORLD,&psize);
@@ -31,7 +33,8 @@ char *argv[];
 	MPI_Barrier(MPI_COMM_WORLD);
 	double start = MPI_Wtime();
 	
-	MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Ibcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
   
     h   = 1.0 / (double) n;  //wide of the rectangle
     sum = 0.0;
@@ -43,7 +46,8 @@ char *argv[];
 	
     local_pi = h * sum;
 	
-	MPI_Reduce(&local_pi, &pi, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+	MPI_Ireduce(&local_pi, &pi, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 
 	double end = MPI_Wtime();
     

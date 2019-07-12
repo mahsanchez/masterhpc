@@ -12,15 +12,16 @@ char *argv[];
 	int rank, psize;
     float *x, *y, *local_x, *local_y;
     float local_dot, dot;
+	MPI_Win xwin, ywin, dotwin; 
 
-	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &psize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    
     if (argc < 2) {
      	fprintf(stderr,"Use: %s num_elem_vector\n", argv[0]);
      	exit(EXIT_FAILURE);
     }
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &psize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	
 	if (rank == 0) {
         N = atoi(argv[1]);
@@ -42,23 +43,42 @@ char *argv[];
 	MPI_Barrier(MPI_COMM_WORLD);
 	double start = MPI_Wtime();
 	
+	if (rank == 0) { 
+		MPI_Win_create(x, sizeof(float), N, MPI_INFO_NULL,  MPI_COMM_WORLD, &xwin); 
+		MPI_Win_create(y, sizeof(float), N, MPI_INFO_NULL,  MPI_COMM_WORLD, &ywin);  
+		MPI_Win_create(&dot, sizeof(float), 1, MPI_INFO_NULL,  MPI_COMM_WORLD, &dotwin);
+    } 
+    else { 
+		MPI_Win_create(MPI_BOTTOM, 0, 1, MPI_INFO_NULL,  MPI_COMM_WORLD, &xwin); 
+		MPI_Win_create(MPI_BOTTOM, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &ywin); 
+		MPI_Win_create(MPI_BOTTOM, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &dotwin); 
+    } 
+	
 	MPI_Bcast(&N, 1, MPI_LONG, 0, MPI_COMM_WORLD);
 	chunk_size = N/psize;
 	
 	local_x = (float *) malloc(chunk_size*sizeof(float));
 	local_y = (float *) malloc(chunk_size*sizeof(float));
 	
-	MPI_Scatter(x, chunk_size, MPI_FLOAT, local_x, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-	MPI_Scatter(y, chunk_size, MPI_FLOAT, local_y, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	MPI_Win_fence(0, xwin);
+	MPI_Get(local_x, chunk_size*sizeof(float), MPI_FLOAT, 0, chunk_size* sizeof(float) * rank, chunk_size*sizeof(float), MPI_FLOAT, xwin);
+    MPI_Win_fence(0, xwin);	
+	
+	MPI_Win_fence(0, ywin);
+	MPI_Get(local_y, chunk_size*sizeof(float), MPI_FLOAT, 0, chunk_size* sizeof(float) * rank, chunk_size*sizeof(float), MPI_FLOAT, ywin);
+    MPI_Win_fence(0, ywin);
 
     // Dot product operation 
 	local_dot = 0.;
     for(i=0; i<chunk_size; i++)
 	    local_dot += local_x[i] * local_y[i];
 	
-	MPI_Reduce(&local_dot, &dot, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+	MPI_Win_fence(0, dotwin);
+	MPI_Accumulate(&local_dot, 1, MPI_FLOAT, 0, 0, 1, MPI_FLOAT, MPI_SUM, dotwin);
+	MPI_Win_fence(0, dotwin);
 	
-	double end = MPI_Wtime();
+	double end = MPI_Wtime();	
+	MPI_Barrier(MPI_COMM_WORLD);
 	
 	if (rank == 0) {
 		printf("Dot product = %f\n", dot);
@@ -72,6 +92,10 @@ char *argv[];
 		free(x);
 	    free(y);
 	}
+	
+	MPI_Win_free(&xwin); 
+	MPI_Win_free(&ywin); 
+	MPI_Win_free(&dotwin); 
 	
 	MPI_Finalize();
 

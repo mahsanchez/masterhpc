@@ -4,7 +4,9 @@ The numerical integration is calculated with n rectangular intervals (area=(1/n)
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "mpi.h"
+#include <omp.h>
 
 int main(argc,argv)
 int argc;
@@ -13,9 +15,11 @@ char *argv[];
     long int n=1000000000, i;
     double PI25DT = 3.141592653589793238462643;
     double pi, local_pi, h, sum, x;
-	int rank, psize;
+	int rank, psize, provided;
 	
-	MPI_Init(&argc,&argv);
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    printf("Nivel proporcionado %d de %d, %d, %d, %d\n", provided, MPI_THREAD_SINGLE,  MPI_THREAD_FUNNELED, MPI_THREAD_SERIALIZED, MPI_THREAD_MULTIPLE);
+	
     MPI_Comm_size(MPI_COMM_WORLD,&psize);
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 
@@ -28,7 +32,7 @@ char *argv[];
 	    n = atol(argv[1]); //num. of intervals	
 	}
 	
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
 	double start = MPI_Wtime();
 	
 	MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -36,6 +40,7 @@ char *argv[];
     h   = 1.0 / (double) n;  //wide of the rectangle
     sum = 0.0;
 	
+	# pragma omp parallel for reduction(+:sum) private(x)
     for (i = rank; i < n; i += psize) {
 		x = h * ((double)i + 0.5);   //height of the rectangle
         sum += 4.0 / (1.0 + x*x);
@@ -44,7 +49,7 @@ char *argv[];
     local_pi = h * sum;
 	
 	MPI_Reduce(&local_pi, &pi, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-
+	
 	double end = MPI_Wtime();
     
 

@@ -3,17 +3,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "mpi.h"
+#include <omp.h>
 
 int main(argc,argv)
 int argc;
 char *argv[];
 {
     long N, i, chunk_size;
-	int rank, psize;
+	int rank, psize, provided;
     float *x, *y, *local_x, *local_y;
     float local_dot, dot;
 
-	MPI_Init(&argc, &argv);
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    printf("Nivel proporcionado %d de %d, %d, %d, %d\n", provided, MPI_THREAD_SINGLE,  MPI_THREAD_FUNNELED, MPI_THREAD_SERIALIZED, MPI_THREAD_MULTIPLE);
+	
 	MPI_Comm_size(MPI_COMM_WORLD, &psize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     
@@ -32,7 +35,8 @@ char *argv[];
 		if((y = (float *) malloc(N*sizeof(float))) == NULL)
 			printf("Error in malloc y[%d]\n",N);
 
-		 /* Inicialization of x and y vectors*/
+		/* Inicialization of x and y vectors*/
+		# pragma omp parallel for 
 		for(i=0; i<N; i++){
 			x[i] = (N/2.0 - i);
 			y[i] = 0.0001*i;
@@ -53,6 +57,8 @@ char *argv[];
 
     // Dot product operation 
 	local_dot = 0.;
+	
+	# pragma omp parallel for reduction(+:local_dot) 
     for(i=0; i<chunk_size; i++)
 	    local_dot += local_x[i] * local_y[i];
 	

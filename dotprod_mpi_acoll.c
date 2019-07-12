@@ -12,6 +12,8 @@ char *argv[];
 	int rank, psize;
     float *x, *y, *local_x, *local_y;
     float local_dot, dot;
+	MPI_Request request;
+	MPI_Status status;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &psize);
@@ -42,21 +44,27 @@ char *argv[];
 	MPI_Barrier(MPI_COMM_WORLD);
 	double start = MPI_Wtime();
 	
-	MPI_Bcast(&N, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+	MPI_Ibcast(&N, 1, MPI_LONG, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
+	
 	chunk_size = N/psize;
 	
 	local_x = (float *) malloc(chunk_size*sizeof(float));
 	local_y = (float *) malloc(chunk_size*sizeof(float));
 	
-	MPI_Scatter(x, chunk_size, MPI_FLOAT, local_x, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-	MPI_Scatter(y, chunk_size, MPI_FLOAT, local_y, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	MPI_Iscatter(x, chunk_size, MPI_FLOAT, local_x, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
+	
+	MPI_Iscatter(y, chunk_size, MPI_FLOAT, local_y, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 
     // Dot product operation 
 	local_dot = 0.;
     for(i=0; i<chunk_size; i++)
 	    local_dot += local_x[i] * local_y[i];
 	
-	MPI_Reduce(&local_dot, &dot, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+	MPI_Ireduce(&local_dot, &dot, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 	
 	double end = MPI_Wtime();
 	
