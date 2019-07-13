@@ -7,17 +7,17 @@
 int main(int argc,char *argv[])
 {
     int i, j, N, M, dim[2];
-	int rank, psize, provided;
+	int rank, psize;
     float *A, *x, *y, temp;
+	MPI_Request request;
+	MPI_Status status;
 
     if (argc < 3) {
      	fprintf(stderr,"Usar: %s filas columnas\n", argv[0]);
      	exit(EXIT_FAILURE);
     }
 	
-	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    printf("Nivel proporcionado %d de %d, %d, %d, %d\n", provided, MPI_THREAD_SINGLE,  MPI_THREAD_FUNNELED, MPI_THREAD_SERIALIZED, MPI_THREAD_MULTIPLE);
-	
+	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &psize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -64,12 +64,14 @@ int main(int argc,char *argv[])
 		local_x[i] = (local_M/2.0 - 1);
 	}
 	
-	MPI_Allgather(local_x, local_M/psize, MPI_FLOAT, x, local_M/psize, MPI_FLOAT, MPI_COMM_WORLD);
+	MPI_Iallgather(local_x, local_M/psize, MPI_FLOAT, x, local_M/psize, MPI_FLOAT, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 	
 	// Matrix distribution among process
 	int chunk_size = local_M * local_N;
 	float *local_A = (float *) malloc(chunk_size * sizeof(float));
-    MPI_Scatter(A, chunk_size, MPI_FLOAT, local_A, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    MPI_Iscatter(A, chunk_size, MPI_FLOAT, local_A, chunk_size, MPI_FLOAT, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 	
 	// local_y partial results vector
 	float *local_y = (float *) malloc( local_N * sizeof(float));
@@ -82,7 +84,8 @@ int main(int argc,char *argv[])
 		local_y[i] = temp;
     }
 	
-	MPI_Gather(local_y, local_N, MPI_FLOAT, y, local_N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	MPI_Igather(local_y, local_N, MPI_FLOAT, y, local_N, MPI_FLOAT, 0, MPI_COMM_WORLD, &request);
+	MPI_Wait(&request, &status);
 	
 	double end = MPI_Wtime();	
 	    

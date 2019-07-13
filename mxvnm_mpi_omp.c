@@ -3,11 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "mpi.h"
+#include <omp.h>
 
 int main(int argc,char *argv[])
 {
     int i, j, N, M, dim[2];
-	int rank, psize, provided;
+	int rank, psize;
     float *A, *x, *y, temp;
 
     if (argc < 3) {
@@ -15,9 +16,7 @@ int main(int argc,char *argv[])
      	exit(EXIT_FAILURE);
     }
 	
-	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    printf("Nivel proporcionado %d de %d, %d, %d, %d\n", provided, MPI_THREAD_SINGLE,  MPI_THREAD_FUNNELED, MPI_THREAD_SERIALIZED, MPI_THREAD_MULTIPLE);
-	
+	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &psize);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -77,8 +76,12 @@ int main(int argc,char *argv[])
     // Matrix-vector product, y = Ax   
     for(i=0; i < local_N; i++) {
 		temp = 0.0;
-		for(j=0; j < local_M; j++)
-			temp += local_A[i*local_N + j] * x[j];				
+		
+		# pragma omp parallel for reduction(+:temp) 
+		for(j=0; j < local_M; j++) {
+			temp += local_A[i*local_N + j] * x[j];		
+		}
+		
 		local_y[i] = temp;
     }
 	
