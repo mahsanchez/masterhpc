@@ -49,7 +49,7 @@ int main(int argc,char *argv[])
 	if (rank == 0) { 
 		MPI_Win_create(x, M*sizeof(float), sizeof(float), MPI_INFO_NULL,  MPI_COMM_WORLD, &xwin); 
 		MPI_Win_create(y, M*sizeof(float), sizeof(float), MPI_INFO_NULL,  MPI_COMM_WORLD, &ywin); 
-		MPI_Win_create(A, sizeof(float), sizeof(float), MPI_INFO_NULL,  MPI_COMM_WORLD, &matrix_awin);
+		MPI_Win_create(A, M*N*sizeof(float), sizeof(float), MPI_INFO_NULL,  MPI_COMM_WORLD, &matrix_awin);
     } 
     else { 
 		MPI_Win_create(MPI_BOTTOM, 0, sizeof(float), MPI_INFO_NULL,  MPI_COMM_WORLD, &xwin); 
@@ -62,6 +62,7 @@ int main(int argc,char *argv[])
 	int local_M = dim[0];
 	int local_N = dim[1]/psize;
 	
+
 	// Initialize vector x locally on each process and distribute it among the process
 	float *local_x = (float *) malloc( local_M/psize * sizeof(float));
 	int chunk_size = local_M/psize;
@@ -78,7 +79,7 @@ int main(int argc,char *argv[])
 	if (rank != 0) {
 		x = (float *) malloc( dim[0] * sizeof(float) );
 	}
-	
+
 	// Gather in vector X from RMA window 
 	MPI_Win_fence(0, xwin);	
 	MPI_Get(x, local_M, MPI_FLOAT, 0, 0, local_M, MPI_FLOAT, xwin);
@@ -86,7 +87,7 @@ int main(int argc,char *argv[])
 	
 	// Matrix distribution among process
 	int submatrix_size = local_M * local_N;
-	float *local_A = (float *) malloc(chunk_size * sizeof(float));
+	float *local_A = (float *) malloc(submatrix_size * sizeof(float));
 	
 	MPI_Win_fence(0, matrix_awin);	
 	MPI_Get(local_A, submatrix_size, MPI_FLOAT, 0, rank * submatrix_size, submatrix_size, MPI_FLOAT, matrix_awin);
