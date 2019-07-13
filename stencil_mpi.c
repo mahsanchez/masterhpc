@@ -37,16 +37,22 @@ int main(int argc, char **argv) {
   MPI_Dims_create(p, 2, pdims);
   int px = pdims[0];
   int py = pdims[1];
-
-  // determine my coordinates (x,y) -- r=x*a+y in the 2d processor array
-  int rx = rank % px;
-  int ry = rank / px;
   
-  // determine my four neighbors
-  int north = (ry-1)*px+rx; if(ry-1 < 0)   north = MPI_PROC_NULL;
-  int south = (ry+1)*px+rx; if(ry+1 >= py) south = MPI_PROC_NULL;
-  int west= ry*px+rx-1;     if(rx-1 < 0)   west = MPI_PROC_NULL;
-  int east = ry*px+rx+1;    if(rx+1 >= px) east = MPI_PROC_NULL;
+  // Find north, south, east and west neighbors
+  int periods[2] = {0,0};
+  MPI_Comm cartesian_topology;
+  MPI_Cart_create(MPI_COMM_WORLD, 2, pdims, periods, 0, &cartesian_topology);
+
+  // Get x,y coordinates per process
+  int coordinates[2];
+  MPI_Cart_coords(cartesian_topology, rank, 2, coordinates);
+  int rx = coordinates[0];
+  int ry = coordinates[1];
+   
+  // Find neighbors ranks
+  int source, north, south, east, west;
+  MPI_Cart_shift(cartesian_topology, 0, 1, &west, &east);
+  MPI_Cart_shift(cartesian_topology, 1, 1, &north, &south);
   
   // decompose the domain
   int bx = n/px; // block size in x
@@ -55,8 +61,8 @@ int main(int argc, char **argv) {
   int offy = ry*by; // offset in y
 
   // allocate two work arrays
-  double *aold = (double*)calloc(1,(bx+2)*(by+2)*sizeof(double)); // 1-wide halo zones!
-  double *anew = (double*)calloc(1,(bx+2)*(by+2)*sizeof(double)); // 1-wide halo zones!
+  double *aold = (double*)calloc(1,(bx+2)*(by+2)*sizeof(double)); 
+  double *anew = (double*)calloc(1,(bx+2)*(by+2)*sizeof(double)); 
   double *tmp;
 
   // initialize three heat sources
